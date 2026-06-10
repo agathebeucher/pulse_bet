@@ -258,7 +258,6 @@ const CATEGORIES = [
     ]
   }
 ];
-// 🔥 Configuration Firebase — remplace les XXXXX avec les infos de ton projet Firebase
 const firebaseConfig = {
   apiKey: "AIzaSyB9q4A54n5Y1s3idqo9A9aqV-uAUKUknCA",
   authDomain: "pulse-bet.firebaseapp.com",
@@ -282,6 +281,9 @@ function startVotesListener(){
     const data = snapshot.val() || {};
     votes = Object.values(data);
     refresh();
+  }, error => {
+    console.error('Erreur lecture Firebase', error);
+    showToast('Erreur Firebase : lecture impossible. Vérifie les règles.', true);
   });
 }
 function saveVotes(){ /* remplacé par Firebase */ }
@@ -323,7 +325,7 @@ function submitVote(){
   const vote = { id:Date.now(), voter, voterKey, choices, timestamp:new Date().toISOString() };
   votesRef.child(voterKey).set(vote)
     .then(() => { clearForm(); switchTab('podiums'); showToast(`Vote de ${voter} enregistré !`); })
-    .catch(err => { console.error(err); showToast('Erreur Firebase : vote non enregistré.', true); });
+    .catch(err => { console.error('Erreur écriture Firebase', err); showToast('Erreur Firebase : vote non enregistré. Vérifie les règles.', true); });
 }
 function clearForm(){ document.getElementById('firstName').value=''; CATEGORIES.forEach(cat => { document.getElementById(`${cat.id}-internal`).value=''; document.getElementById(`${cat.id}-external`).value=''; }); checkExistingVoter(); }
 function countChoices(catId, type){ const counts={}; votes.forEach(v => { const val=v.choices?.[catId]?.[type]; if(val) counts[val]=(counts[val]||0)+1; }); return counts; }
@@ -339,12 +341,12 @@ function renderPodiums(){ const root=document.getElementById('podiums-container'
 function renderCategoryPodium(cat){ return `<article class="result-card">${categoryTitle(cat)}<div class="podium-grid"><div class="result-block"><h4>Podium interne</h4>${renderTop3(countChoices(cat.id,'internal'))}</div><div class="result-block"><h4>Podium externe</h4>${renderTop3(countChoices(cat.id,'external'))}</div></div></article>`; }
 function renderTop3(counts){ const medals=['🥇','🥈','🥉']; const entries=sortedEntries(counts).slice(0,3); if(entries.length===0) return '<div class="empty" style="padding:12px">Aucune donnée</div>'; return `<div class="podium-list">${entries.map(([name,count],i)=>`<div class="podium-item"><span class="podium-rank">${medals[i]}</span><span class="podium-name">${escHtml(name)}</span><span class="podium-count">${count} vote${count>1?'s':''}</span></div>`).join('')}</div>`; }
 function renderVotesTable(){ const root=document.getElementById('votes-table'); if(votes.length===0){ root.innerHTML='<div class="empty">Aucun vote enregistré.</div>'; return; } root.innerHTML=`<table><thead><tr><th>Prénom</th><th>Date</th><th>Choix</th><th>Action</th></tr></thead><tbody>${votes.slice().reverse().map(v=>{ const d=new Date(v.timestamp); const choices=CATEGORIES.map(cat=>`<strong>${escHtml(cat.short || cat.name)}</strong> — Interne : ${escHtml(v.choices?.[cat.id]?.internal || '—')} / Externe : ${escHtml(v.choices?.[cat.id]?.external || '—')}`).join('<br>'); return `<tr><td>${escHtml(v.voter)}</td><td>${d.toLocaleDateString('fr-FR')} ${d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</td><td>${choices}</td><td><button class="btn danger" onclick="deleteVote(${v.id})">Supprimer</button></td></tr>`; }).join('')}</tbody></table>`; }
-function deleteVote(id){ const vote=votes.find(v=>v.id===id); if(!vote){ showToast('Vote introuvable.', true); return; } if(confirm(`Supprimer le vote de ${vote.voter} ?`)){ votesRef.child(vote.voterKey).remove().then(() => showToast(`Vote de ${vote.voter} supprimé.`)).catch(err => { console.error(err); showToast('Erreur Firebase : suppression impossible.', true); }); } }
+function deleteVote(id){ const vote=votes.find(v=>v.id===id); if(!vote){ showToast('Vote introuvable.', true); return; } if(confirm(`Supprimer le vote de ${vote.voter} ?`)){ votesRef.child(vote.voterKey).remove().then(() => showToast(`Vote de ${vote.voter} supprimé.`)).catch(err => { console.error('Erreur suppression Firebase', err); showToast('Erreur Firebase : suppression impossible.', true); }); } }
 function updateStats(){ document.getElementById('stat-votes').textContent=votes.length; document.getElementById('stat-participants').textContent=new Set(votes.map(v=>v.voterKey)).size; document.getElementById('stat-categories').textContent=CATEGORIES.length; }
 function refresh(){ updateStats(); renderResults(); renderPodiums(); renderVotesTable(); checkExistingVoter(); }
 function switchTab(tab){ ['vote','results','podiums','list'].forEach(t=>{ document.getElementById(`tab-${t}`).style.display=t===tab?'block':'none'; document.getElementById(`tab-btn-${t}`).classList.toggle('active',t===tab); }); if(tab==='results') renderResults(); if(tab==='podiums') renderPodiums(); if(tab==='list') renderVotesTable(); }
 function exportCSV(){ if(votes.length===0){ showToast('Aucun vote à exporter.', true); return; } const headers=['Prenom','Date']; CATEGORIES.forEach(cat=>{ headers.push(`${cat.name} - interne`, `${cat.name} - externe`); }); const rows=votes.map(v=>{ const row=[v.voter,v.timestamp]; CATEGORIES.forEach(cat=>row.push(v.choices?.[cat.id]?.internal || '', v.choices?.[cat.id]?.external || '')); return row; }); const csv=[headers,...rows].map(r=>r.map(cell=>`"${String(cell).replace(/"/g,'""')}"`).join(';')).join('\n'); const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='votes_prix_pulse.csv'; a.click(); URL.revokeObjectURL(a.href); }
-function resetVotes(){ if(confirm('Supprimer tous les votes enregistrés pour tout le monde ?')){ votesRef.remove().then(() => showToast('Votes réinitialisés pour tout le monde.')).catch(err => { console.error(err); showToast('Erreur Firebase : reset impossible.', true); }); } }
+function resetVotes(){ if(confirm('Supprimer tous les votes enregistrés pour tout le monde ?')){ votesRef.remove().then(() => showToast('Votes réinitialisés pour tout le monde.')).catch(err => { console.error('Erreur reset Firebase', err); showToast('Erreur Firebase : reset impossible.', true); }); } }
 function flash(el){ el.style.borderColor='var(--red)'; setTimeout(()=>el.style.borderColor='',1400); }
 function showToast(msg,error=false){ const t=document.getElementById('toast'); t.textContent=msg; t.style.background=error?'var(--red)':'var(--green)'; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2600); }
 renderVoteForm(); refresh(); startVotesListener();
